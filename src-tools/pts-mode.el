@@ -6,6 +6,8 @@
     map)
   "Keymap for PTS major mode")
 
+
+;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.lpts\\'" . pts-mode))
 
 (defconst pts-mode-font-lock-keywords
