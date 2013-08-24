@@ -282,6 +282,13 @@ typecheck t = case structure t of
     return x
 
 
+returnIffNormalized term returnValue = do
+  env <- getEnvironment
+  if show term == show (nbe env term)
+   then returnValue
+   else prettyFail $ text "Not normalized:" <+> pretty 0 term
+
+
 typecheckPull :: (MonadEnvironment Name (Binding M) m, MonadReader Options m, MonadErrors Errors m, Functor m, MonadLog m) => Term -> m TypedTerm
 typecheckPull t = case structure t of
   -- constant
@@ -446,15 +453,19 @@ typecheckPush t q = case structure t of
     -- 1.
     -- NOTE this should already be normalized (because typecheck should only return normalized types)!
     -- NOTE well, it's not, apparently. Can't figure it out right now.
-    typedFunction@(MkTypedTerm _ (MkTypedTerm (Pi a' typeA typeR) _)) <- typecheckPull f
+    foo@(MkTypedTerm term typ) <- typecheckPull f
+--    typedFunction@(MkTypedTerm _ (MkTypedTerm (Pi a' typeA typeR) _)) <- typecheckPull f
+    case foo of
+      typedFunction@(MkTypedTerm _ (MkTypedTerm (Pi a' typeA typeR) _)) -> do {
 
     -- 2.
-    typedArgument <- typecheckPush a typeA
+    typedArgument <- typecheckPush a typeA;
    
     -- 3. (B is actually the pushed term q)
-    bidiExpected (typedSubst typeR a' typedArgument) q t
+    bidiExpected (typedSubst typeR a' typedArgument) q t;
 
-    return (MkTypedTerm (App typedFunction typedArgument) q)
+    return (MkTypedTerm (App typedFunction typedArgument) q);}
+      _ -> prettyFail $ text "Push App\n t:" <+> pretty 0 t <+> text "\nq:" <+> pretty 0 q <+> text "\nterm:" <+> text (show term)
 
 
   -- TODO unannotated abstractions

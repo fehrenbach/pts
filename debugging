@@ -1,0 +1,11 @@
+cabal-dev install
+
+cabal-dev ghci
+
+:m +PTS.Process.Main
+
+:break PTS.Statics.Typing 468
+
+:main -l /home/stefan/src/pts/examples/ChurchNumbers.lpts
+
+:print foo hangs
