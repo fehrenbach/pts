@@ -3,6 +3,8 @@ module PTS.Statics.Typing where
 
 import Prelude (fst, snd, String)
 
+import Control.Exception (assert)
+
 import Control.Monad
 import Control.Monad.Environment
 import Control.Monad.Errors.Class
@@ -26,7 +28,7 @@ import PTS.Error
 import PTS.Instances
 import PTS.Options
 import PTS.Syntax
-import PTS.Syntax.Term (TypedTerm (MkTypedTerm))
+import PTS.Syntax.Term -- (TypedTerm (MkTypedTerm))
 
 import Text.PrettyPrint.HughesPJ hiding (int)
 import Text.Show (Show (show))
@@ -90,7 +92,7 @@ debug :: (MonadEnvironment Name (Binding M) m, MonadLog m) => String -> Term -> 
 debug n t result = do
   enter n
   ctx <- getEnvironment
---  log $ "Context: " ++ showCtx ctx
+  log $ "Context: " ++ showCtx ctx
   log $ "Subject: " ++ show t
   x <- result
   log $ "Result:  " ++ show x
@@ -282,20 +284,24 @@ typecheck t = case structure t of
     return x
 
 
+isNormalized :: TypedTerm -> Bool
+--isNormalized t = trace ("Should be normalized: " ++ (show t)) True
+isNormalized _ = True
+
 typecheckPull :: (MonadEnvironment Name (Binding M) m, MonadReader Options m, MonadErrors Errors m, Functor m, MonadLog m) => Term -> m TypedTerm
 typecheckPull t = case structure t of
   -- constant
   Const c -> debug "typecheckPull Const" t $ do
     pts <- asks optInstance
     case axioms pts c of
-      Just t  ->  return (MkTypedTerm (Const c) t)
+      Just t  ->  assert (isNormalized t) $ return (MkTypedTerm (Const c) t)
       _       ->  prettyFail $ text "Unknown constant:" <+> pretty 0 c
 
   Var x -> debug "typecheckPull Var" t $ do
     xt <- lookupType x
     case xt of
       Just xt -> do
-        return (MkTypedTerm (Var x) xt)
+        assert (isNormalized xt) $ return (MkTypedTerm (Var x) xt)
       Nothing ->
         fail $ "Unbound identifier: " ++ show x
 
@@ -310,7 +316,7 @@ typecheckPull t = case structure t of
 
       pts <- asks optInstance
       s3 <- prettyRelations pts s1' s2'
-      return (MkTypedTerm (Pi newx a' newb') s3)
+      assert (isNormalized s3) $ return (MkTypedTerm (Pi newx a' newb') s3)
 
   -- application
   App t1 t2 -> debug "typecheckPull App" t $ do
@@ -329,7 +335,7 @@ typecheckPull t = case structure t of
     t2'@(MkTypedTerm _ tt2) <- typecheckPush t2 a'
 
     -- TODO get rid of subst?
-    return (MkTypedTerm (App t1' t2') (typedSubst b' x t2'))
+    assert (isNormalized (typedSubst b' x t2')) $ return (MkTypedTerm (App t1' t2') (typedSubst b' x t2'))
 
   -- abstraction
   Lam x a b -> debug "typecheckPull Abs" t $ do
@@ -346,12 +352,12 @@ typecheckPull t = case structure t of
       pts <- asks optInstance
       s3 <- prettyRelations pts s1' s2'
 
-      return (MkTypedTerm (Lam newx a' newb') (MkTypedTerm (Pi newx a' tb'') s3))
+      assert (isNormalized (MkTypedTerm (Pi newx a' tb'') s3)) $ return (MkTypedTerm (Lam newx a' newb') (MkTypedTerm (Pi newx a' tb'') s3))
 
   -- Int
   Int i -> debug "typecheckPull Int" t $ do
     int' <- typecheckPull (mkConst int)
-    return (MkTypedTerm (Int i) int')
+    assert (isNormalized int') $ return (MkTypedTerm (Int i) int')
 
   -- IntOp
   IntOp opName opFunction t1 t2 -> debug "typecheckPull IntOp" t $ do
@@ -361,7 +367,7 @@ typecheckPull t = case structure t of
     t1'@(MkTypedTerm _ tt1) <- typecheckPush t1 integerType
     t2'@(MkTypedTerm _ tt2) <- typecheckPush t2 integerType
     -- If this worked we return the IntOp with typed arguments and type Int. 
-    return (MkTypedTerm (IntOp opName opFunction t1' t2') integerType)
+    assert (isNormalized integerType) $ return (MkTypedTerm (IntOp opName opFunction t1' t2') integerType)
 
   -- IfZero
   IfZero condition thenTerm elseTerm -> debug "typecheckPull IfZero" t $ do
@@ -374,7 +380,7 @@ typecheckPull t = case structure t of
     typedThen@(MkTypedTerm _ thenType) <- typecheckPull thenTerm
     typedElse@(MkTypedTerm _ elseType) <- typecheckPull elseTerm
     normalizeToSame thenType elseType typedThen typedElse (text "in if0") (text "then branch") (text "else branch")
-    return (MkTypedTerm (IfZero typedCondition typedThen typedElse) thenType)
+    assert (isNormalized thenType) $ return (MkTypedTerm (IfZero typedCondition typedThen typedElse) thenType)
 
   -- Position information
   Pos p t -> do
@@ -446,15 +452,26 @@ typecheckPush t q = case structure t of
     -- 1.
     -- NOTE this should already be normalized (because typecheck should only return normalized types)!
     -- NOTE well, it's not, apparently. Can't figure it out right now.
-    typedFunction@(MkTypedTerm _ (MkTypedTerm (Pi a' typeA typeR) _)) <- typecheckPull f
+
+
+   
+   
+   -- typedFunction@(MkTypedTerm _ (MkTypedTerm (Pi a' typeA typeR) _)) <- typecheckPull f
+   foo <- typecheckPull (trace ("F: " ++ (show f)) f)
+   case foo of    
+     typedFunction@(MkTypedTerm (Pos _ _) (MkTypedTerm (Pos _ (MkTypedTerm (Pi a' typeA typeR) _)) _)) --(Pi a' typeA typeR) _)
+--     (MkTerm (Pi _ _ _))
+        -> do {
 
     -- 2.
-    typedArgument <- typecheckPush a typeA
+--    typedArgument <- typecheckPush a typeA;
    
     -- 3. (B is actually the pushed term q)
-    bidiExpected (typedSubst typeR a' typedArgument) q t
+--    bidiExpected (typedSubst typeR a' typedArgument) q t;
 
-    return (MkTypedTerm (App typedFunction typedArgument) q)
+--    return (MkTypedTerm (App typedFunction typedArgument) q);
+      prettyFail $ text "bla";    }
+     a -> do prettyFail $ text "foo:" <+> pretty 0 foo <+> text "typeof foo:" <+> pretty 0 (strip (typeOf foo))
 
 
   -- TODO unannotated abstractions
